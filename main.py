@@ -9,8 +9,10 @@ import threading
 import signal
 import psutil
 import tempfile
+from flask_cors import CORS  # Ajout de CORS
 
 app = Flask(__name__)
+CORS(app)  # Activer CORS pour toutes les routes
 
 # Configuration de Mailjet
 MAILJET_API_KEY = '0db1e1f71a7ff521eaa2206af8a1c35d'
