@@ -7,7 +7,8 @@ import time
 from flask_mail import Mail, Message
 import threading
 import signal
-import psutil  # Bibliothèque pour accéder aux processus système
+import psutil
+import tempfile
 
 app = Flask(__name__)
 
@@ -21,14 +22,12 @@ mail = Mail(app)
 # URL de l'API cible
 API_URL = 'https://api.webstorage-service.com/v1/devices/data'
 
-# Obtenir le chemin du dossier "Documents" de l'utilisateur
-user_documents_dir = os.path.join(os.path.expanduser('~'), 'Documents')
+# Utiliser le répertoire temporaire du système pour stocker les fichiers JSON et logs
+temp_dir = tempfile.gettempdir()
 
-# Définir le chemin pour le fichier response.json dans le dossier "Documents"
-json_file_path = os.path.join(user_documents_dir, 'response.json')
-
-# Chemin du fichier de log
-log_file_path = os.path.join(user_documents_dir, 'app.log')
+# Chemins pour les fichiers JSON et logs
+json_file_path = os.path.join(temp_dir, 'response.json')
+log_file_path = os.path.join(temp_dir, 'app.log')
 
 # Configuration du logging
 logging.basicConfig(
@@ -43,12 +42,12 @@ logging.info(f'Serveur Flask démarré. Logs écrits dans : {log_file_path}')
 # Fonction pour arrêter le serveur proprement
 def stop_server():
     logging.info("Arrêt du serveur Flask")
-    os.kill(os.getpid(), signal.SIGINT)  # Envoie un signal pour arrêter Flask
+    os.kill(os.getpid(), signal.SIGINT)
 
 # Route pour arrêter le serveur Flask
 @app.route('/stop-server', methods=['POST'])
 def stop():
-    threading.Thread(target=stop_server).start()  # Arrête Flask dans un autre thread
+    threading.Thread(target=stop_server).start()
     return jsonify({'message': 'Le serveur va s\'arrêter.'})
 
 # Route principale pour faire la requête POST vers l'API
@@ -88,11 +87,7 @@ def proxy_request():
             'temperature-unit': temperature_unit
         }
 
-        headers = {
-            'Content-Type': 'application/json',
-            'X-HTTP-Method-Override': 'GET'
-        }
-
+        headers = {'Content-Type': 'application/json', 'X-HTTP-Method-Override': 'GET'}
         logging.info("Payload envoyé à l'API externe : %s", payload)
 
         response = requests.post(API_URL, json=payload, headers=headers)
@@ -102,15 +97,12 @@ def proxy_request():
 
         api_response = response.json()
 
-        # Sauvegarde la réponse dans un fichier JSON local dans le dossier "Documents"
+        # Sauvegarde la réponse dans un fichier JSON local
         with open(json_file_path, 'w') as json_file:
             json.dump(api_response, json_file)
 
         logging.info("Réponse de l'API externe sauvegardée dans %s", json_file_path)
-
         return jsonify(api_response)
-
-
 
     except Exception as e:
         logging.error("Erreur dans la route /proxy : %s", str(e))
@@ -120,9 +112,7 @@ def proxy_request():
 @app.route('/download-json', methods=['GET'])
 def download_json():
     try:
-        # Vérifier si le fichier JSON existe
         if not os.path.exists(json_file_path):
-            # Si le fichier n'existe pas, le créer avec des données par défaut
             logging.warning("Le fichier response.json n'existe pas, création d'un fichier vide.")
             with open(json_file_path, 'w') as json_file:
                 json.dump({}, json_file)  # Écriture d'un fichier JSON vide
@@ -138,7 +128,6 @@ def download_json():
 @app.route('/send-alert', methods=['POST'])
 def send_alert():
     data = request.get_json()
-
     subject = data.get('subject', 'Alerte de température élevée')
     message = data.get('message', 'La température a dépassé le seuil critique.')
     recipient = data.get('recipient')
@@ -148,16 +137,8 @@ def send_alert():
     payload = {
         "Messages": [
             {
-                "From": {
-                    "Email": "hugocoleau07@gmail.com",
-                    "Name": "Alerte"
-                },
-                "To": [
-                    {
-                        "Email": recipient,
-                        "Name": "Destinataire"
-                    }
-                ],
+                "From": {"Email": "hugocoleau07@gmail.com", "Name": "Alerte"},
+                "To": [{"Email": recipient, "Name": "Destinataire"}],
                 "Subject": subject,
                 "TextPart": message,
                 "HTMLPart": f"<h3>{message}</h3>"
@@ -177,12 +158,13 @@ def send_alert():
         logging.error("Erreur dans la route /send-alert : %s", str(e))
         return jsonify({'error': str(e)}), 500
 
+# Route pour récupérer les statistiques Mailjet
 @app.route('/mailjet-stats', methods=['GET'])
 def get_mailjet_stats():
     try:
         url = 'https://api.mailjet.com/v3/REST/message'
         response = requests.get(url, auth=(MAILJET_API_KEY, MAILJET_API_SECRET))
-        
+
         if response.status_code == 200:
             data = response.json()
             total_emails_sent = data['Total']
@@ -194,16 +176,14 @@ def get_mailjet_stats():
     except Exception as e:
         logging.error("Erreur dans la route /mailjet-stats : %s", str(e))
         return jsonify({'error': str(e)}), 500
-    
-    
+
 # Route pour vérifier si "start.exe" est en cours d'exécution
 @app.route('/check-start-exe', methods=['GET'])
 def check_start_exe():
     for proc in psutil.process_iter(['pid', 'name']):
         if proc.info['name'] == 'start.exe':
             return jsonify({"running": True})
-    return jsonify({"running": False})   
-
+    return jsonify({"running": False})
 
 # Route pour vérifier le mot de passe
 @app.route('/auth', methods=['POST'])
@@ -216,8 +196,6 @@ def auth():
     else:
         return jsonify({"success": False}), 403
 
- 
-
 if __name__ == '__main__':
     logging.info("Démarrage du serveur Flask")
-    app.run(debug=True, port=5000,host='0.0.0.0')
+    app.run(debug=True, port=5000, host='0.0.0.0')
