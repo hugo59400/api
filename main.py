@@ -10,7 +10,7 @@ import signal
 import psutil
 import tempfile
 from flask_cors import CORS  # Ajout de CORS
-
+ 
 app = Flask(__name__)
 CORS(app)  # Activer CORS pour toutes les routes
 
