@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Données du Capteur</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            padding: 20px;
+            background-color: #f4f7f8;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .info-box {
+            background-color: #fff;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="email"],
+        input[type="number"] {
+            width: calc(100% - 22px);
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.3s ease;
+        }
+        input[type="email"]:focus,
+        input[type="number"]:focus {
+            border-color: #007bff;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s ease;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        table, th, td {
+            border: 1px solid #ccc;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+        }
+        th {
+            background-color: #007bff;
+            color: white;
+        }
+        td {
+            background-color: #f9f9f9;
+        }
+        .info-box h2 {
+            color: #007bff;
+        }
+        #api-status {
+            color: red;
+            font-weight: bold;
+        }
+        #email-count {
+            font-weight: bold;
+            color: #007bff;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Données du Capteur</h1>
+
+    <div class="info-box">
+        <h2>Paramètres d'alerte</h2>
+        <label for="sender-email">Adresse e-mail de l'expéditeur :</label>
+        <input type="email" id="sender-email" placeholder="expediteur@example.com" required>
+        
+        <label for="recipient-email">Adresse e-mail du destinataire :</label>
+        <input type="email" id="recipient-email" placeholder="destinataire@example.com" required>
+
+        <label for="temperature-threshold">Seuil de température (C°) :</label>
+        <input type="number" id="temperature-threshold" placeholder="30" required>
+
+        <button onclick="checkTemperature()">Appliquer et surveiller</button>
+    </div>
+
+    <div class="info-box">
+        <h2>Informations du Device</h2>
+        <p><strong>Modèle :</strong> <span id="model"></span></p>
+        <p><strong>Nom :</strong> <span id="name"></span></p>
+        <p><strong>Sérial :</strong> <span id="serial"></span></p>
+        <p><strong>Différence de Temps (min) :</strong> <span id="time_diff"></span></p>
+        <p><strong>Bias DST :</strong> <span id="dst_bias"></span></p>
+        <p><strong>Bias Standard :</strong> <span id="std_bias"></span></p>
+    </div>
+
+    <!-- <div class="info-box">
+        <h2>Informations du Device</h2>
+        <p id="api-status">Vérification du statut de "start.exe"...</p>
+    </div> -->
+
+    <p>Nombre d'e-mails envoyés : <span id="email-count">0</span></p>
+
+    <h2>Mesures de T° et Humidité</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Data ID</th>
+                <th>Temps Unix</th>
+                <th>Température (C°)</th>
+                <th>Humidité (%)</th>
+            </tr>
+        </thead>
+        <tbody id="data-table-body">
+            <!-- Les données seront insérées ici -->
+        </tbody>
+    </table>
+
+    <script>
+        // Définir l'URL de base pour l'API
+        const baseUrl = 'https://api-naqn.onrender.com';
+
+        let temperatureThreshold = null;
+        let senderEmail = null;
+        let recipientEmail = null;
+
+        async function checkStartExeStatus() {
+            try {
+                const response = await fetch(`${baseUrl}/check-start-exe`);
+                const data = await response.json();
+                const statusText = document.getElementById('api-status');
+                if (data.running) {
+                    statusText.innerText = 'start.exe est en cours d\'exécution.';
+                    statusText.style.color = "green";
+                } else {
+                    statusText.innerText = 'start.exe n\'est pas en cours d\'exécution.';
+                    statusText.style.color = "red";
+                }
+            } catch (error) {
+                console.error('Erreur lors de la vérification de "start.exe" :', error);
+                document.getElementById('api-status').innerText = 'Erreur lors de la vérification de start.exe';
+            }
+        }
+
+        function validateEmail(email) {
+            const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            return regex.test(email);
+        }
+
+        function checkTemperature() {
+            temperatureThreshold = parseFloat(document.getElementById('temperature-threshold').value);
+            senderEmail = document.getElementById('sender-email').value;
+            recipientEmail = document.getElementById('recipient-email').value;
+
+            if (!validateEmail(senderEmail) || !validateEmail(recipientEmail)) {
+                alert("Veuillez entrer des adresses e-mail valides.");
+                return;
+            }
+
+            if (!temperatureThreshold || !senderEmail || !recipientEmail) {
+                alert("Veuillez remplir tous les champs.");
+                return;
+            }
+
+            alert(`Seuil de température défini à ${temperatureThreshold} °C`);
+        }
+
+        async function sendEmailAlert(temp) {
+            try {
+                console.log("Envoi de l'alerte par e-mail...");
+                const response = await fetch(`${baseUrl}/send-alert`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        subject: 'Alerte de température élevée',
+                        message: `La température a dépassé ${temperatureThreshold}°C avec une valeur actuelle de ${temp}°C.`,
+                        sender: senderEmail,
+                        recipient: recipientEmail
+                    })
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    alert(`E-mail d'alerte envoyé à ${recipientEmail}`);
+                } else {
+                    const errorResult = await response.json();
+                    console.error('Erreur lors de l\'envoi de l\'e-mail d\'alerte :', errorResult.error);
+                }
+            } catch (error) {
+                console.error('Erreur lors de l\'envoi de l\'e-mail d\'alerte :', error);
+            }
+        }
+
+        async function getEmailCount() {
+            try {
+                console.log("Récupération du nombre d'e-mails envoyés...");
+                const response = await fetch(`${baseUrl}/mailjet-stats`);
+                const data = await response.json();
+                document.getElementById('email-count').innerText = data.total_emails_sent;
+            } catch (error) {
+                console.error('Erreur lors de la récupération des statistiques d\'e-mails :', error);
+            }
+        }
+
+        async function loadSensorData() {
+            try {
+                console.log("Chargement des données du capteur...");
+                const response = await fetch(`${baseUrl}/download-json`);
+                const data = await response.json();
+
+                document.getElementById('model').innerText = data.model;
+                document.getElementById('name').innerText = data.name;
+                document.getElementById('serial').innerText = data.serial;
+                document.getElementById('time_diff').innerText = data.time_diff;
+                document.getElementById('dst_bias').innerText = data.dst_bias;
+                document.getElementById('std_bias').innerText = data.std_bias;
+
+                const dataTableBody = document.getElementById('data-table-body');
+                dataTableBody.innerHTML = '';
+
+                data.data.forEach(item => {
+                    const temp = parseFloat(item.ch1);
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${item["data-id"]}</td>
+                        <td>${new Date(item.unixtime * 1000).toLocaleString()}</td>
+                        <td>${temp}</td>
+                        <td>${item.ch2}</td>
+                    `;
+                    dataTableBody.appendChild(row);
+
+                    if (temperatureThreshold && temp > temperatureThreshold) {
+                        sendEmailAlert(temp);
+                    }
+                });
+            } catch (error) {
+                console.error('Erreur lors du chargement des données :', error);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            checkStartExeStatus();
+            async function updateAndLoadData() {
+                await updateJsonFromApi();
+                await loadSensorData();
+                await getEmailCount();
+            }
+            updateAndLoadData();
+            setInterval(updateAndLoadData, 30000);
+        });
+
+        async function updateJsonFromApi() {
+            try {
+                const proxyUrl = `${baseUrl}/proxy?api-key=6c4qifect0r2jqp7t14jae9f8hdrtfs0lvosrm33ega97&login-id=tdga2927&login-pass=Metroskf&remote-serial=423600BA&type=json&temperature-unit=C`;
+                console.log("Appel à l'API proxy pour mettre à jour le fichier JSON...");
+                const response = await fetch(proxyUrl);
+                if (!response.ok) {
+                    throw new Error(`Erreur lors de la mise à jour du fichier JSON: ${response.statusText}`);
+                }
+                console.log('Le fichier JSON a été mis à jour.');
+            } catch (error) {
+                console.error('Erreur lors de l\'appel de l\'API Proxy :', error);
+            }
+        }
+
+        window.addEventListener('beforeunload', async (event) => {
+            try {
+                await fetch(`${baseUrl}/stop-server`, { method: 'POST' });
+                console.log('Serveur arrêté');
+            } catch (error) {
+                console.error('Erreur lors de l\'arrêt du serveur :', error);
+            }
+        });
+    </script>
+
+</body>
+</html>
